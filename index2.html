@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Radio Streamer</title>
+    <script src="https://unpkg.com/globe.gl"></script>
+    <!-- Add FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #00f3ff;
+            --bg-panel: rgba(10, 15, 30, 0.85);
+            --text-main: #ffffff;
+            --text-sec: #a0a0a0;
+        }
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Roboto, sans-serif; color: var(--text-main); }
+        
+        /* UI Overlay */
+        #ui-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        /* Header / Search */
+        header {
+            pointer-events: auto;
+            padding: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+        }
+        
+        h1 { margin: 0; font-size: 1.5rem; text-shadow: 0 0 10px var(--primary); display: flex; align-items: center; gap: 10px; }
+        
+        .search-box {
+            position: relative;
+            margin-left: 20px;
+        }
+        input#search {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            color: white;
+            width: 250px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        input#search:focus {
+            border-color: var(--primary);
+            background: rgba(255,255,255,0.15);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+        }
+
+        /* Rotation Toggle */
+        .icon-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s;
+        }
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .icon-btn.active {
+            background: rgba(0, 243, 255, 0.2);
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        /* Genre Tags */
+        .genres {
+            pointer-events: auto;
+            padding: 0 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .genre-tag {
+            background: rgba(255,255,255,0.1);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+            border: 1px solid transparent;
+        }
+        .genre-tag:hover, .genre-tag.active {
+            background: rgba(0, 243, 255, 0.2);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Player Panel */
+        #player-panel {
+            pointer-events: auto;
+            margin: 20px;
+            width: 320px;
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transform: translateY(150%); /* Hidden by default */
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #player-panel.active { transform: translateY(0); }
+
+        .station-info h2 { margin: 0 0 5px 0; font-size: 1.2rem; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .station-info p { margin: 0 0 15px 0; color: var(--text-sec); font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
+        
+        /* Custom Audio Controls */
+        .controls { display: flex; align-items: center; gap: 15px; margin-top: 10px; }
+        .play-btn {
+            width: 45px; height: 45px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: none;
+            color: #000;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.2s;
+        }
+        .play-btn:hover { transform: scale(1.1); }
+        .volume-slider { flex: 1; accent-color: var(--primary); }
+
+        /* Loading & Status */
+        #status-msg {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Tooltip */
+        .globe-tooltip {
+            background: rgba(0,0,0,0.9) !important;
+            border: 1px solid var(--primary);
+            border-radius: 8px;
+            padding: 8px 12px !important;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        /* Station List Panel */
+        #station-list-panel {
+            position: absolute;
+            top: 90px; right: 20px;
+            width: 300px;
+            max-height: calc(100% - 120px);
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            pointer-events: auto;
+            z-index: 101;
+        }
+        #station-list-panel.active { display: flex; }
+        #station-list-panel h3 {
+            margin: 0; padding: 15px;
+            background: rgba(0,0,0,0.2);
+            font-size: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #station-list {
+            list-style: none;
+            margin: 0; padding: 0;
+            overflow-y: auto;
+            flex: 1;
+        }
+        /* Scrollbar for list */
+        #station-list::-webkit-scrollbar { width: 6px; }
+        #station-list::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        #station-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+        
+        .station-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .station-item:hover { background: rgba(255,255,255,0.1); }
+        .station-item.active { background: rgba(0, 243, 255, 0.1); border-left: 3px solid var(--primary); }
+        .station-item-name { font-weight: bold; color: white; display: block; font-size: 0.9rem; }
+        .station-item-loc { font-size: 0.8rem; color: var(--text-sec); }
+    </style>
+</head>
+<body>
+    <div id="globeViz"></div>
+
+    <div id="ui-container">
+        <div>
+            <header>
+                <h1><i class="fas fa-globe-americas"></i> RadioGlobe</h1>
+                <button id="rotation-toggle" class="icon-btn active" title="Toggle Rotation">
+                    <i class="fas fa-sync-alt fa-spin"></i>
+                </button>
+                <button id="list-toggle" class="icon-btn" title="Station List" style="margin-left: 10px;">
+                    <i class="fas fa-list"></i>
+                </button>
+                <div class="search-box">
+                    <input type="text" id="search" placeholder="Search stations, countries...">
+                </div>
+            </header>
+            <div class="genres" id="genre-list">
+                <div class="genre-tag active" data-tag="">All</div>
+                <div class="genre-tag" data-tag="pop">Pop</div>
+                <div class="genre-tag" data-tag="rock">Rock</div>
+                <div class="genre-tag" data-tag="jazz">Jazz</div>
+                <div class="genre-tag" data-tag="classical">Classical</div>
+                <div class="genre-tag" data-tag="news">News</div>
+                <div class="genre-tag" data-tag="electronic">Electronic</div>
+            </div>
+        </div>
+
+        <div id="status-msg">
+            <div class="spinner"></div>
+            <div id="status-text">Initializing Satellite Uplink...</div>
+        </div>
+
+        <div id="station-list-panel">
+            <h3>Stations <span id="station-count" style="font-size:0.8em; color:var(--text-sec); background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:10px;">0</span></h3>
+            <ul id="station-list"></ul>
+        </div>
+
+        <div id="player-panel">
+            <div class="station-info">
+                <h2 id="p-name">Select a station</h2>
+                <p><i class="fas fa-map-marker-alt"></i> <span id="p-loc">Global</span></p>
+                <div id="p-tags" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px;"></div>
+            </div>
+            <audio id="audio-element" crossorigin="anonymous"></audio>
+            <div class="controls">
+                <button class="play-btn" id="play-pause"><i class="fas fa-play"></i></button>
+                <i class="fas fa-volume-down" style="color:var(--text-sec)"></i>
+                <input type="range" class="volume-slider" min="0" max="1" step="0.1" value="0.8">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let world;
+        let stations = [];
+        let currentStation = null;
+        let isPlaying = false;
+        let isRotationPaused = false;
+        let isHovering = false;
+
+        // DOM Elements
+        const statusMsg = document.getElementById('status-msg');
+        const statusText = document.getElementById('status-text');
+        const playerPanel = document.getElementById('player-panel');
+        const audio = document.getElementById('audio-element');
+        const playBtn = document.getElementById('play-pause');
+        const pName = document.getElementById('p-name');
+        const pLoc = document.getElementById('p-loc');
+        const searchInput = document.getElementById('search');
+        const genreTags = document.querySelectorAll('.genre-tag');
+        const stationListEl = document.getElementById('station-list');
+        const stationCountEl = document.getElementById('station-count');
+        const listPanel = document.getElementById('station-list-panel');
+        const listToggleBtn = document.getElementById('list-toggle');
+
+        // Initialize
+        function init() {
+            // Setup Globe
+            world = Globe()
+                (document.getElementById('globeViz'))
+                .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+                .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+                .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+                .pointOfView({ altitude: 2.5 })
+                .pointColor(() => '#00f3ff')
+                .pointAltitude(0.02)
+                .pointRadius(0.25)
+                .pointResolution(16) // Lower resolution for performance
+                .pointLabel(d => `
+                    <div class="globe-tooltip">
+                        <div style="font-weight:bold; color:#00f3ff">${d.name}</div>
+                        <div style="font-size:0.8em; color:#ccc">${d.city}, ${d.country}</div>
+                    </div>
+                `)
+                .onPointHover(hoverD => {
+                    isHovering = !!hoverD;
+                    document.body.style.cursor = hoverD ? 'pointer' : 'default';
+                    updateRotation();
+                })
+                .onPointClick(playStation)
+                .ringColor(() => '#00f3ff')
+                .ringMaxRadius(5)
+                .ringPropagationSpeed(2)
+                .ringRepeatPeriod(1000);
+
+            // Controls
+            world.controls().autoRotate = true;
+            world.controls().autoRotateSpeed = 0.6;
+            world.controls().enableZoom = true;
+
+            // Fetch Initial Data
+            fetchStations();
+
+            // Event Listeners
+            setupEventListeners();
+        }
+
+        function fetchStations(tag = '', query = '') {
+            statusMsg.style.opacity = '1';
+            statusText.textContent = "Scanning Frequencies...";
+            
+            let url = "https://de1.api.radio-browser.info/json/stations/search?hidebroken=true&has_geo=true&limit=1000&order=clickcount&reverse=true";
+            
+            if (tag) url += `&tag=${tag}`;
+            if (query) url += `&name=${query}`;
+
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    stations = data.map(s => ({
+                        name: s.name,
+                        lat: parseFloat(s.geo_lat),
+                        lng: parseFloat(s.geo_long),
+                        country: s.country,
+                        city: s.state || s.country,
+                        url: s.url_resolved,
+                        tags: s.tags,
+                        uuid: s.stationuuid
+                    })).filter(s => !isNaN(s.lat) && !isNaN(s.lng));
+
+                    world.pointsData(stations);
+                    renderStationList(stations);
+                    statusMsg.style.opacity = '0';
+                    
+                    if(stations.length === 0) {
+                        statusText.textContent = "No stations found.";
+                        statusMsg.style.opacity = '1';
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    statusText.textContent = "Connection Error. Retrying...";
+                    setTimeout(() => fetchStations(tag, query), 3000);
+                });
+        }
+
+        function playStation(station) {
+            currentStation = station;
+            
+            // Update UI
+            playerPanel.classList.add('active');
+            pName.textContent = station.name;
+            pLoc.textContent = `${station.city}, ${station.country}`;
+            
+            // Highlight in list
+            document.querySelectorAll('.station-item').forEach(el => {
+                el.classList.remove('active');
+                if(el.dataset.uuid === station.uuid) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+            
+            // Visual Feedback
+            world.ringsData([station]);
+            world.pointOfView({ lat: station.lat, lng: station.lng, altitude: 1.8 }, 1500);
+            updateRotation();
+
+            // Audio
+            audio.src = station.url;
+            audio.play().then(() => {
+                isPlaying = true;
+                updatePlayBtn();
+            }).catch(e => {
+                console.error("Stream error", e);
+                alert("Stream offline or format unsupported.");
+            });
+        }
+
+        function togglePlay() {
+            if (!currentStation) return;
+            if (audio.paused) {
+                audio.play();
+                isPlaying = true;
+            } else {
+                audio.pause();
+                isPlaying = false;
+            }
+            updatePlayBtn();
+        }
+
+        function updatePlayBtn() {
+            playBtn.innerHTML = isPlaying ? '<i class="fas fa-pause"></i>' : '<i class="fas fa-play"></i>';
+        }
+
+        function renderStationList(data) {
+            stationListEl.innerHTML = '';
+            stationCountEl.textContent = data.length;
+            
+            data.forEach(station => {
+                const li = document.createElement('li');
+                li.className = 'station-item';
+                li.dataset.uuid = station.uuid;
+                li.innerHTML = `
+                    <span class="station-item-name">${station.name}</span>
+                    <span class="station-item-loc">${station.city}, ${station.country}</span>
+                `;
+                li.addEventListener('click', () => playStation(station));
+                stationListEl.appendChild(li);
+            });
+        }
+
+        function updateRotation() {
+            if (isHovering || currentStation || isRotationPaused) {
+                world.controls().autoRotate = false;
+            } else {
+                world.controls().autoRotate = true;
+            }
+        }
+
+        function setupEventListeners() {
+            // Play/Pause
+            playBtn.addEventListener('click', togglePlay);
+            
+            // Volume
+            document.querySelector('.volume-slider').addEventListener('input', (e) => {
+                audio.volume = e.target.value;
+            });
+
+            // Search (Debounced)
+            let timeout;
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    fetchStations('', e.target.value);
+                    // Reset genre tags
+                    genreTags.forEach(t => t.classList.remove('active'));
+                }, 800);
+            });
+
+            // Genres
+            genreTags.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    genreTags.forEach(t => t.classList.remove('active'));
+                    btn.classList.add('active');
+                    const tag = btn.dataset.tag;
+                    fetchStations(tag);
+                    searchInput.value = '';
+                });
+            });
+
+            // Window Resize
+            window.addEventListener('resize', () => {
+                world.width(window.innerWidth).height(window.innerHeight);
+            });
+
+            // Rotation Toggle
+            const rotationBtn = document.getElementById('rotation-toggle');
+            rotationBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                isRotationPaused = !isRotationPaused;
+                console.log('Rotation toggled:', isRotationPaused);
+                
+                if (isRotationPaused) {
+                    rotationBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+                    rotationBtn.classList.remove('active');
+                } else {
+                    rotationBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i>';
+                    rotationBtn.classList.add('active');
+                }
+                
+                updateRotation();
+            });
+
+            // List Toggle
+            listToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                listPanel.classList.toggle('active');
+                listToggleBtn.classList.toggle('active');
+            });
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
